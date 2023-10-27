@@ -18,7 +18,7 @@ package raft
 //
 
 import "sync"
-import "labrpc"
+import "github.com/MarcValentino/trabalho2_SD/src/labrpc"
 
 // import "bytes"
 // import "encoding/gob"
