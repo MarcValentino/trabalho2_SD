@@ -100,6 +100,7 @@ func (rf *Raft) readPersist(data []byte) {
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
+
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
 }
@@ -115,6 +116,9 @@ type RequestVoteReply struct {
 //
 // example RequestVote RPC handler.
 //
+
+// Implement the RequestVote() RPC handler so that servers will vote for 
+// one another.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 }
@@ -148,6 +152,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 //
+
+
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
@@ -207,7 +213,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
-
+	// AQUI: Modify Make() to 
+	// create a background goroutine that will kick off leader 
+	// election periodically by sending out RequestVote RPCs when it hasn't 
+	// heard from another peer for a while. This way a peer will learn 
+	// who is the leader, if there is already leader, 
+	// or become itself the leader. 
+	
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
