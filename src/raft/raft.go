@@ -45,7 +45,11 @@ type Raft struct {
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
-
+	// ElectionTimer - como implementar?
+	CurrentTerm int               // current term held as an int
+	VotedFor int                  // id of the candidate this node voted for
+	// o atributo log[] e os outros que representam estado não serão implementados
+	// porque não são necessários para a eleição ocorrer.  
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
@@ -54,10 +58,14 @@ type Raft struct {
 
 // return currentTerm and whether this server
 // believes it is the leader.
+// pergunta: o que isso quer dizer? 
 func (rf *Raft) GetState() (int, bool) {
 
 	var term int
 	var isleader bool
+	term := rf.currentTerm
+	if (rf.votedFor == rf.me) isLeader := true
+	else isLeader := false
 	// Your code here (2A).
 	return term, isleader
 }
@@ -102,6 +110,9 @@ func (rf *Raft) readPersist(data []byte) {
 //
 
 type RequestVoteArgs struct {
+	term int
+	candidateId int
+
 	// Your data here (2A, 2B).
 }
 
@@ -110,6 +121,9 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
+	Term int
+	VoteGranted bool
+
 	// Your data here (2A).
 }
 
@@ -120,6 +134,14 @@ type RequestVoteReply struct {
 // Implement the RequestVote() RPC handler so that servers will vote for 
 // one another.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+	if (args.term >= rf.term && (rf.votedFor == nil || rf.votedFor == args.candidateId)) {
+		reply.Term := args.term
+		reply.VoteGranted := true
+	} else {
+		reply.Term := rf.term
+		reply.VoteGranted := false 
+	}
+		
 	// Your code here (2A, 2B).
 }
 
