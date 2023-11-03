@@ -17,19 +17,21 @@ package raft
 //   in the same server.
 //
 
-import "sync"
-import "github.com/MarcValentino/trabalho2_SD/src/labrpc"
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+
+	"github.com/MarcValentino/trabalho2_SD/src/labrpc"
+)
 
 // import "bytes"
 // import "encoding/gob"
 
-
-
-//
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make().
-//
 type ApplyMsg struct {
 	Index       int
 	Command     interface{}
@@ -37,19 +39,18 @@ type ApplyMsg struct {
 	Snapshot    []byte // ignore for lab2; only used in lab3
 }
 
-//
 // A Go object implementing a single Raft peer.
-//
 type Raft struct {
-	mu        sync.Mutex          // Lock to protect shared access to this peer's state
-	peers     []*labrpc.ClientEnd // RPC end points of all peers
-	persister *Persister          // Object to hold this peer's persisted state
-	me        int                 // this peer's index into peers[]
-	// ElectionTimer - como implementar?
-	CurrentTerm int               // current term held as an int
-	VotedFor int                  // id of the candidate this node voted for
+	mu            sync.Mutex          // Lock to protect shared access to this peer's state
+	peers         []*labrpc.ClientEnd // RPC end points of all peers
+	persister     *Persister          // Object to hold this peer's persisted state
+	me            int                 // this peer's index into peers[]
+	ElectionTimer *time.Timer
+	CurrentTerm   int // current term held as an int
+	VotedFor      int // id of the candidate this node voted for
+	IsLeader      bool
 	// o atributo log[] e os outros que representam estado não serão implementados
-	// porque não são necessários para a eleição ocorrer.  
+	// porque não são necessários para a eleição ocorrer.
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
@@ -58,23 +59,20 @@ type Raft struct {
 
 // return currentTerm and whether this server
 // believes it is the leader.
-// pergunta: o que isso quer dizer? 
+// pergunta: o que isso quer dizer?
 func (rf *Raft) GetState() (int, bool) {
 
 	var term int
-	var isleader bool
-	term := rf.currentTerm
-	if (rf.votedFor == rf.me) isLeader := true
-	else isLeader := false
+	var isLeader bool
+	term = rf.CurrentTerm
+	isLeader = rf.IsLeader
 	// Your code here (2A).
-	return term, isleader
+	return term, isLeader
 }
 
-//
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
-//
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
@@ -86,9 +84,7 @@ func (rf *Raft) persist() {
 	// rf.persister.SaveRaftState(data)
 }
 
-//
 // restore previously persisted state.
-//
 func (rf *Raft) readPersist(data []byte) {
 	// Your code here (2C).
 	// Example:
@@ -101,27 +97,22 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 }
 
-
-
-
 //
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
 
 type RequestVoteArgs struct {
-	term int
-	candidateId int
+	Term        int
+	CandidateId int
 
 	// Your data here (2A, 2B).
 }
 
-//
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
-//
 type RequestVoteReply struct {
-	Term int
+	Term        int
 	VoteGranted bool
 
 	// Your data here (2A).
@@ -131,17 +122,21 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 
-// Implement the RequestVote() RPC handler so that servers will vote for 
+// Implement the RequestVote() RPC handler so that servers will vote for
 // one another.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	if (args.term >= rf.term && (rf.votedFor == nil || rf.votedFor == args.candidateId)) {
-		reply.Term := args.term
-		reply.VoteGranted := true
+	rf.ElectionTimer.Reset(time.Duration(300 + int(100*rand.Float32())))
+	if true {
+		rf.VotedFor = args.CandidateId
+		rf.CurrentTerm = args.Term
+		reply.Term = args.Term
+		reply.VoteGranted = true
+
 	} else {
-		reply.Term := rf.term
-		reply.VoteGranted := false 
+		reply.Term = rf.CurrentTerm
+		reply.VoteGranted = false
 	}
-		
+
 	// Your code here (2A, 2B).
 }
 
@@ -175,14 +170,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // the struct itself.
 //
 
-
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
 
-
-//
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -194,7 +187,6 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 // if it's ever committed. the second return value is the current
 // term. the third return value is true if this server believes it is
 // the leader.
-//
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
@@ -202,21 +194,43 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	// Your code here (2B).
 
-
 	return index, term, isLeader
 }
 
-//
 // the tester calls Kill() when a Raft instance won't
 // be needed again. you are not required to do anything
 // in Kill(), but it might be convenient to (for example)
 // turn off debug output from this instance.
-//
 func (rf *Raft) Kill() {
 	// Your code here, if desired.
 }
 
-//
+func (rf *Raft) sendAllVotes() {
+	rf.VotedFor = rf.me
+	print(fmt.Sprintf("node %d is candidate\n", (*rf).me))
+	(*rf).CurrentTerm += 1
+	voteArgs := RequestVoteArgs{}
+	voteArgs.CandidateId = rf.me
+	voteArgs.Term = (*rf).CurrentTerm
+	fmt.Printf("voteArgs: %+v\n", voteArgs)
+	voteReply := RequestVoteReply{}
+	voteCount := 1
+	for i := 0; i < len(rf.peers); i++ {
+		rf.sendRequestVote(i, &voteArgs, &voteReply)
+		fmt.Printf("voteReply: %+v\n", voteReply)
+		if voteReply.VoteGranted {
+
+			voteCount += 1
+		}
+		if voteCount > int(len(rf.peers)/2) {
+			print("leader elected")
+			rf.IsLeader = true
+			break
+		}
+	}
+	rf.ElectionTimer.Reset(time.Duration(300 + int(100*rand.Float32())))
+}
+
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
 // server's port is peers[me]. all the servers' peers[] arrays
@@ -226,25 +240,27 @@ func (rf *Raft) Kill() {
 // tester or service expects Raft to send ApplyMsg messages.
 // Make() must return quickly, so it should start goroutines
 // for any long-running work.
-//
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-
+	rf.IsLeader = false
+	rf.ElectionTimer = time.AfterFunc(time.Duration(300+int(200*rand.Float32()))*time.Millisecond, rf.sendAllVotes)
+	rf.VotedFor = -1
+	rf.CurrentTerm = -1
+	fmt.Printf("rf: %+v\n", rf)
 	// Your initialization code here (2A, 2B, 2C).
-	// AQUI: Modify Make() to 
-	// create a background goroutine that will kick off leader 
-	// election periodically by sending out RequestVote RPCs when it hasn't 
-	// heard from another peer for a while. This way a peer will learn 
-	// who is the leader, if there is already leader, 
-	// or become itself the leader. 
-	
+	// AQUI: Modify Make() to
+	// create a background goroutine that will kick off leader
+	// election periodically by sending out RequestVote RPCs when it hasn't
+	// heard from another peer for a while. This way a peer will learn
+	// who is the leader, if there is already leader,
+	// or become itself the leader.
+
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
-
+	<-rf.ElectionTimer.C
 	return rf
 }
