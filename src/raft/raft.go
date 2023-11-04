@@ -208,10 +208,9 @@ func (rf *Raft) Kill() {
 func (rf *Raft) sendAllVotes() {
 	rf.VotedFor = rf.me
 	print(fmt.Sprintf("node %d is candidate\n", (*rf).me))
-	(*rf).CurrentTerm += 1
 	voteArgs := RequestVoteArgs{}
 	voteArgs.CandidateId = rf.me
-	voteArgs.Term = (*rf).CurrentTerm
+	voteArgs.Term = (*rf).CurrentTerm + 1
 	fmt.Printf("voteArgs: %+v\n", voteArgs)
 	voteReply := RequestVoteReply{}
 	voteCount := 1
@@ -228,7 +227,7 @@ func (rf *Raft) sendAllVotes() {
 			break
 		}
 	}
-	rf.ElectionTimer.Reset(time.Duration(300 + int(100*rand.Float32())))
+	rf.ElectionTimer.Reset(time.Duration(2+int(2*rand.Float32())) * time.Second)
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -247,7 +246,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
-	rf.ElectionTimer = time.AfterFunc(time.Duration(300+int(200*rand.Float32()))*time.Millisecond, rf.sendAllVotes)
+	rf.ElectionTimer = time.AfterFunc(time.Duration(2+int(2*rand.Float32()))*time.Second, rf.sendAllVotes)
+	// relogio travou tudo, tem que ver como deixar paralelo o correr do tempo
 	rf.VotedFor = -1
 	rf.CurrentTerm = -1
 	fmt.Printf("rf: %+v\n", rf)
@@ -261,6 +261,5 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-	<-rf.ElectionTimer.C
 	return rf
 }
