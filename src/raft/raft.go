@@ -41,14 +41,15 @@ type ApplyMsg struct {
 
 // A Go object implementing a single Raft peer.
 type Raft struct {
-	mu            sync.Mutex          // Lock to protect shared access to this peer's state
-	peers         []*labrpc.ClientEnd // RPC end points of all peers
-	persister     *Persister          // Object to hold this peer's persisted state
-	me            int                 // this peer's index into peers[]
-	ElectionTimer *time.Timer
-	CurrentTerm   int // current term held as an int
-	VotedFor      int // id of the candidate this node voted for
-	IsLeader      bool
+	mu             sync.Mutex          // Lock to protect shared access to this peer's state
+	peers          []*labrpc.ClientEnd // RPC end points of all peers
+	persister      *Persister          // Object to hold this peer's persisted state
+	me             int                 // this peer's index into peers[]
+	ElectionTimer  *time.Timer
+	CurrentTerm    int // current term held as an int
+	VotedFor       int // id of the candidate this node voted for
+	IsLeader       bool
+	HeartbeatTimer *time.Timer
 	// o atributo log[] e os outros que representam estado não serão implementados
 	// porque não são necessários para a eleição ocorrer.
 	// Your data here (2A, 2B, 2C).
@@ -127,6 +128,9 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
 	if rf.CurrentTerm < args.Term {
+		if rf.IsLeader {
+			rf.IsLeader = false
+		}
 		rf.VotedFor = args.CandidateId
 		rf.CurrentTerm = args.Term
 		reply.Term = args.Term
@@ -176,6 +180,27 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
+type AppendEntriesArgs struct {
+	Term     int
+	LeaderId int
+}
+
+type AppendEntriesReply struct {
+	Ok bool
+}
+
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
+	reply.Ok = true
+}
+
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+
+	return ok
+}
+
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -220,16 +245,33 @@ func (rf *Raft) sendAllVotes() {
 		fmt.Printf("voteReply: %+v\n", voteReply)
 		if voteReply.VoteGranted {
 			voteCount += 1
-		}
-		if voteCount > int(len(rf.peers)/2) {
-			print("leader elected")
-			rf.IsLeader = true
-			rf.ElectionTimer.Stop()
-			return
+			if voteCount > int(len(rf.peers)/2) {
+				print("leader elected")
+				rf.IsLeader = true
+				break
+			}
+		} else if voteReply.Term > rf.CurrentTerm {
+			rf.CurrentTerm = voteReply.Term
+			break
+
 		}
 	}
 	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
 
+}
+
+func (rf *Raft) sendAllAppendEntries() {
+	if rf.IsLeader {
+		appendEntriesArgs := AppendEntriesArgs{}
+		appendEntriesArgs.LeaderId = rf.me
+		appendEntriesArgs.Term = rf.CurrentTerm
+		appendEntriesReply := AppendEntriesReply{}
+		for i := 0; i < len(rf.peers); i++ {
+			rf.sendAppendEntries(i, &appendEntriesArgs, &appendEntriesReply)
+			fmt.Printf("appendEntriesReply: %+v\n", appendEntriesReply)
+		}
+	}
+	rf.HeartbeatTimer.Reset(time.Duration(500) * time.Millisecond)
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -249,8 +291,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 	rf.IsLeader = false
 	rf.ElectionTimer = time.AfterFunc(time.Duration(2+int(4*rand.Float32()))*time.Second, rf.sendAllVotes)
+	rf.HeartbeatTimer = time.AfterFunc(time.Duration(500)*time.Millisecond, rf.sendAllAppendEntries)
 	rf.VotedFor = -1
-	rf.CurrentTerm = -1
+	rf.CurrentTerm = 0
 	fmt.Printf("rf: %+v\n", rf)
 	// Your initialization code here (2A, 2B, 2C).
 	// AQUI: Modify Make() to
