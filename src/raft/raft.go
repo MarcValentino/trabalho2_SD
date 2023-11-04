@@ -126,7 +126,7 @@ type RequestVoteReply struct {
 // Implement the RequestVote() RPC handler so that servers will vote for
 // one another.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
+	rf.resetElectionClock()
 	if rf.CurrentTerm < args.Term {
 		if rf.IsLeader {
 			rf.IsLeader = false
@@ -190,7 +190,11 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
+	rf.resetElectionClock()
+	if rf.CurrentTerm < args.Term {
+		rf.IsLeader = false
+		rf.CurrentTerm = args.Term
+	}
 	reply.Ok = true
 }
 
@@ -245,19 +249,21 @@ func (rf *Raft) sendAllVotes() {
 		fmt.Printf("voteReply: %+v\n", voteReply)
 		if voteReply.VoteGranted {
 			voteCount += 1
-			if voteCount > int(len(rf.peers)/2) {
-				print("leader elected")
-				rf.IsLeader = true
-				break
-			}
 		} else if voteReply.Term > rf.CurrentTerm {
 			rf.CurrentTerm = voteReply.Term
 			break
-
 		}
 	}
-	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
+	if voteCount > len(rf.peers)/2 {
+		print("leader elected\n")
+		rf.IsLeader = true
+	}
+	rf.resetElectionClock()
 
+}
+
+func (rf *Raft) resetElectionClock() {
+	rf.ElectionTimer.Reset(time.Duration(300+int(100*rand.Float32())) * time.Millisecond)
 }
 
 func (rf *Raft) sendAllAppendEntries() {
@@ -271,7 +277,7 @@ func (rf *Raft) sendAllAppendEntries() {
 			fmt.Printf("appendEntriesReply: %+v\n", appendEntriesReply)
 		}
 	}
-	rf.HeartbeatTimer.Reset(time.Duration(500) * time.Millisecond)
+	rf.HeartbeatTimer.Reset(time.Duration(150) * time.Millisecond)
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -290,8 +296,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
-	rf.ElectionTimer = time.AfterFunc(time.Duration(2+int(4*rand.Float32()))*time.Second, rf.sendAllVotes)
-	rf.HeartbeatTimer = time.AfterFunc(time.Duration(500)*time.Millisecond, rf.sendAllAppendEntries)
+	rf.ElectionTimer = time.AfterFunc(time.Duration(300+int(100*rand.Float32()))*time.Millisecond, rf.sendAllVotes)
+	rf.HeartbeatTimer = time.AfterFunc(time.Duration(150)*time.Millisecond, rf.sendAllAppendEntries)
 	rf.VotedFor = -1
 	rf.CurrentTerm = 0
 	fmt.Printf("rf: %+v\n", rf)
