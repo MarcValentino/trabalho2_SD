@@ -125,8 +125,8 @@ type RequestVoteReply struct {
 // Implement the RequestVote() RPC handler so that servers will vote for
 // one another.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	rf.ElectionTimer.Reset(time.Duration(300 + int(100*rand.Float32())))
-	if true {
+	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
+	if rf.CurrentTerm < args.Term {
 		rf.VotedFor = args.CandidateId
 		rf.CurrentTerm = args.Term
 		reply.Term = args.Term
@@ -209,8 +209,9 @@ func (rf *Raft) sendAllVotes() {
 	rf.VotedFor = rf.me
 	print(fmt.Sprintf("node %d is candidate\n", (*rf).me))
 	voteArgs := RequestVoteArgs{}
+	rf.CurrentTerm += 1
 	voteArgs.CandidateId = rf.me
-	voteArgs.Term = (*rf).CurrentTerm + 1
+	voteArgs.Term = rf.CurrentTerm
 	fmt.Printf("voteArgs: %+v\n", voteArgs)
 	voteReply := RequestVoteReply{}
 	voteCount := 1
@@ -218,16 +219,17 @@ func (rf *Raft) sendAllVotes() {
 		rf.sendRequestVote(i, &voteArgs, &voteReply)
 		fmt.Printf("voteReply: %+v\n", voteReply)
 		if voteReply.VoteGranted {
-
 			voteCount += 1
 		}
 		if voteCount > int(len(rf.peers)/2) {
 			print("leader elected")
 			rf.IsLeader = true
-			break
+			rf.ElectionTimer.Stop()
+			return
 		}
 	}
-	rf.ElectionTimer.Reset(time.Duration(2+int(2*rand.Float32())) * time.Second)
+	rf.ElectionTimer.Reset(time.Duration(2+int(4*rand.Float32())) * time.Second)
+
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -246,8 +248,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
-	rf.ElectionTimer = time.AfterFunc(time.Duration(2+int(2*rand.Float32()))*time.Second, rf.sendAllVotes)
-	// relogio travou tudo, tem que ver como deixar paralelo o correr do tempo
+	rf.ElectionTimer = time.AfterFunc(time.Duration(2+int(4*rand.Float32()))*time.Second, rf.sendAllVotes)
 	rf.VotedFor = -1
 	rf.CurrentTerm = -1
 	fmt.Printf("rf: %+v\n", rf)
