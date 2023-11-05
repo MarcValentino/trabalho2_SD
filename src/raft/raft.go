@@ -49,6 +49,7 @@ type Raft struct {
 	CurrentTerm    int // current term held as an int
 	VotedFor       int // id of the candidate this node voted for
 	IsLeader       bool
+	IsCandidate    bool
 	HeartbeatTimer *time.Timer
 	// o atributo log[] e os outros que representam estado não serão implementados
 	// porque não são necessários para a eleição ocorrer.
@@ -241,43 +242,45 @@ func (rf *Raft) sendAllVotes() {
 	rf.CurrentTerm += 1
 	voteArgs.CandidateId = rf.me
 	voteArgs.Term = rf.CurrentTerm
-	fmt.Printf("voteArgs: %+v\n", voteArgs)
 	voteReply := RequestVoteReply{}
 	voteCount := 1
 	for i := 0; i < len(rf.peers); i++ {
 		rf.sendRequestVote(i, &voteArgs, &voteReply)
-		fmt.Printf("voteReply: %+v\n", voteReply)
 		if voteReply.VoteGranted {
 			voteCount += 1
 		} else if voteReply.Term > rf.CurrentTerm {
 			rf.CurrentTerm = voteReply.Term
-			break
+			rf.IsLeader = false
+			rf.IsCandidate = false
+			rf.resetElectionClock()
+			return
 		}
 	}
 	if voteCount > len(rf.peers)/2 {
 		print("leader elected\n")
 		rf.IsLeader = true
 	}
+	rf.IsCandidate = false
 	rf.resetElectionClock()
 
 }
 
 func (rf *Raft) resetElectionClock() {
-	rf.ElectionTimer.Reset(time.Duration(300+int(100*rand.Float32())) * time.Millisecond)
+	rf.ElectionTimer.Reset(time.Duration(150+int(150*rand.Float32())) * time.Millisecond)
 }
 
 func (rf *Raft) sendAllAppendEntries() {
 	if rf.IsLeader {
+		rf.resetElectionClock()
 		appendEntriesArgs := AppendEntriesArgs{}
 		appendEntriesArgs.LeaderId = rf.me
 		appendEntriesArgs.Term = rf.CurrentTerm
 		appendEntriesReply := AppendEntriesReply{}
 		for i := 0; i < len(rf.peers); i++ {
 			rf.sendAppendEntries(i, &appendEntriesArgs, &appendEntriesReply)
-			fmt.Printf("appendEntriesReply: %+v\n", appendEntriesReply)
 		}
 	}
-	rf.HeartbeatTimer.Reset(time.Duration(150) * time.Millisecond)
+	rf.HeartbeatTimer.Reset(time.Duration(50) * time.Millisecond)
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -296,11 +299,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
-	rf.ElectionTimer = time.AfterFunc(time.Duration(300+int(100*rand.Float32()))*time.Millisecond, rf.sendAllVotes)
-	rf.HeartbeatTimer = time.AfterFunc(time.Duration(150)*time.Millisecond, rf.sendAllAppendEntries)
+	rf.ElectionTimer = time.AfterFunc(time.Duration(150+int(150*rand.Float32()))*time.Millisecond, rf.sendAllVotes)
+	rf.HeartbeatTimer = time.AfterFunc(time.Duration(50)*time.Millisecond, rf.sendAllAppendEntries)
 	rf.VotedFor = -1
 	rf.CurrentTerm = 0
-	fmt.Printf("rf: %+v\n", rf)
 	// Your initialization code here (2A, 2B, 2C).
 	// AQUI: Modify Make() to
 	// create a background goroutine that will kick off leader
