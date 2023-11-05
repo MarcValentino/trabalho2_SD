@@ -26,6 +26,12 @@ import (
 	"github.com/MarcValentino/trabalho2_SD/src/labrpc"
 )
 
+const HEARTBEAT_TIME = time.Duration(50) * time.Millisecond
+
+func getElectionTime() time.Duration {
+	return time.Duration(150+int(300*rand.Float32())) * time.Millisecond
+}
+
 // import "bytes"
 // import "encoding/gob"
 
@@ -266,7 +272,7 @@ func (rf *Raft) sendAllVotes() {
 }
 
 func (rf *Raft) resetElectionClock() {
-	rf.ElectionTimer.Reset(time.Duration(150+int(150*rand.Float32())) * time.Millisecond)
+	rf.ElectionTimer.Reset(getElectionTime())
 }
 
 func (rf *Raft) sendAllAppendEntries() {
@@ -280,7 +286,7 @@ func (rf *Raft) sendAllAppendEntries() {
 			rf.sendAppendEntries(i, &appendEntriesArgs, &appendEntriesReply)
 		}
 	}
-	rf.HeartbeatTimer.Reset(time.Duration(50) * time.Millisecond)
+	rf.HeartbeatTimer.Reset(HEARTBEAT_TIME)
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -299,8 +305,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
-	rf.ElectionTimer = time.AfterFunc(time.Duration(150+int(150*rand.Float32()))*time.Millisecond, rf.sendAllVotes)
-	rf.HeartbeatTimer = time.AfterFunc(time.Duration(50)*time.Millisecond, rf.sendAllAppendEntries)
+	rf.ElectionTimer = time.AfterFunc(getElectionTime(), rf.sendAllVotes)
+	rf.HeartbeatTimer = time.AfterFunc(HEARTBEAT_TIME, rf.sendAllAppendEntries)
 	rf.VotedFor = -1
 	rf.CurrentTerm = 0
 	// Your initialization code here (2A, 2B, 2C).
