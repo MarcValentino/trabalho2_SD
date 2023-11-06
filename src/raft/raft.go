@@ -243,7 +243,7 @@ func (rf *Raft) Kill() {
 
 func (rf *Raft) sendAllVotes() {
 	rf.VotedFor = rf.me
-	print(fmt.Sprintf("node %d is candidate\n", (*rf).me))
+	print(fmt.Sprintf("node %d is candidate on term %d\n", (*rf).me, (*rf).CurrentTerm+1))
 	voteArgs := RequestVoteArgs{}
 	rf.CurrentTerm += 1
 	voteArgs.CandidateId = rf.me
@@ -251,19 +251,22 @@ func (rf *Raft) sendAllVotes() {
 	voteReply := RequestVoteReply{}
 	voteCount := 1
 	for i := 0; i < len(rf.peers); i++ {
-		rf.sendRequestVote(i, &voteArgs, &voteReply)
-		if voteReply.VoteGranted {
-			voteCount += 1
-		} else if voteReply.Term > rf.CurrentTerm {
-			rf.CurrentTerm = voteReply.Term
-			rf.IsLeader = false
-			rf.IsCandidate = false
-			rf.resetElectionClock()
-			return
+		if rf.me != i {
+			rf.sendRequestVote(i, &voteArgs, &voteReply)
+			if voteReply.VoteGranted {
+				print(fmt.Sprintf("node %d -- voted for node %d -- on term %d \n", i, (*rf).me, voteReply.Term))
+				voteCount += 1
+			} else if voteReply.Term > rf.CurrentTerm {
+				rf.CurrentTerm = voteReply.Term
+				rf.IsLeader = false
+				rf.IsCandidate = false
+				rf.resetElectionClock()
+				return
+			}
 		}
 	}
 	if voteCount > len(rf.peers)/2 {
-		print("leader elected\n")
+		print(fmt.Sprintf("node %d elected as leader on term %d \n", (*rf).me, (*rf).CurrentTerm))
 		rf.IsLeader = true
 	}
 	rf.IsCandidate = false
@@ -305,10 +308,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
-	rf.ElectionTimer = time.AfterFunc(getElectionTime(), rf.sendAllVotes)
-	rf.HeartbeatTimer = time.AfterFunc(HEARTBEAT_TIME, rf.sendAllAppendEntries)
 	rf.VotedFor = -1
 	rf.CurrentTerm = 0
+	rf.ElectionTimer = time.AfterFunc(getElectionTime(), rf.sendAllVotes)
+	rf.HeartbeatTimer = time.AfterFunc(HEARTBEAT_TIME, rf.sendAllAppendEntries)
+
 	// Your initialization code here (2A, 2B, 2C).
 	// AQUI: Modify Make() to
 	// create a background goroutine that will kick off leader
