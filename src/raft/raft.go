@@ -26,10 +26,10 @@ import (
 	"github.com/MarcValentino/trabalho2_SD/src/labrpc"
 )
 
-const HEARTBEAT_TIME = time.Duration(50) * time.Millisecond
+const HEARTBEAT_TIME = time.Duration(100) * time.Millisecond
 
 func getElectionTime() time.Duration {
-	return time.Duration(150+int(300*rand.Float32())) * time.Millisecond
+	return time.Duration(300+int(300*rand.Float32())) * time.Millisecond
 }
 
 // import "bytes"
@@ -197,12 +197,14 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+
 	rf.resetElectionClock()
 	if rf.CurrentTerm < args.Term {
 		rf.IsLeader = false
 		rf.CurrentTerm = args.Term
 	}
 	reply.Ok = true
+
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -308,6 +310,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.IsLeader = false
+	rf.IsCandidate = false
 	rf.VotedFor = -1
 	rf.CurrentTerm = 0
 	rf.ElectionTimer = time.AfterFunc(getElectionTime(), rf.sendAllVotes)
